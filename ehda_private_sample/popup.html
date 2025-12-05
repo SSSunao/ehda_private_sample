@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>EH Downloader</title>
+<style>
+  :root{
+    --bg:#f8fafc; --panel:#fff; --text:#0f172a; --muted:#64748b; --accent:#0ea5ff;
+  }
+  [data-theme="dark"]{ --bg:#071023; --panel:#0b1220; --text:#e6eef8; --muted:#9aa8bf; --accent:#0ea5ff; }
+  [data-theme="classic"]{ --bg:#f4f4f4; --panel:#fff; --text:#111; --muted:#666; --accent:#111; }
+
+  body{ margin:0; padding:12px; background:var(--bg); color:var(--text); font-family:system-ui,Arial; }
+  .panel{ background:var(--panel); border-radius:10px; padding:12px; width:540px; box-shadow:0 6px 18px rgba(2,6,23,0.12); }
+  h1{ margin:0; font-size:18px; display:flex; justify-content:space-between; align-items:center; }
+  .cols{ display:flex; gap:12px; margin-top:10px;   column-gap: 16px;
+  row-gap: 20px;}
+  .col{ flex:1; display:flex; flex-direction:column; gap:8px; }
+  label{ font-size:13px; color:var(--muted); }
+  input[type="text"], input[type="number"], select{ width:100%; padding:8px; border-radius:6px; border:1px solid #d1d5db; background:transparent; color:var(--text); }
+  .section{ margin-top:12px; }
+  .queue-box{ max-height:140px; overflow:auto; border:1px dashed #cbd5e1; padding:8px; border-radius:6px; background:transparent; }
+  .queue-item{ padding:6px 4px; border-bottom:1px solid #eef2f7; font-size:13px; display:flex; justify-content:space-between; gap:8px; }
+  .buttons{ display:flex; gap:8px; margin-top:10px; }
+  button{ padding:8px 10px; border-radius:6px; border:none; cursor:pointer; background:var(--accent); color:white; }
+  .btn-secondary{ background:#94a3b8; color:white; }
+  .btn-danger{ background:#ef4444; color:white; }
+
+  /* modal */
+  .modal-backdrop{ position:fixed; left:0; top:0; right:0; bottom:0; background:rgba(0,0,0,0.4); display:none; align-items:center; justify-content:center; }
+  .modal{ background:var(--panel); padding:16px; border-radius:10px; width:380px; box-shadow:0 8px 34px rgba(2,6,23,0.2); }
+  .modal .choices{ display:flex; gap:8px; margin-top:12px; }
+  .muted{ color:var(--muted); font-size:12px; }
+
+  /* responsive */
+  @media(max-width:560px){
+    .panel{ width:100%; }
+    .cols{ flex-direction:column; }
+  }
+
+  /* ========== UI Polishing / Micro Interaction ========== */
+
+/* hover animation for buttons */
+button {
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+button:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+button:active {
+  transform: translateY(1px);
+  opacity: 1;
+}
+
+/* queue item animation */
+.queue-item {
+  animation: fadeIn 0.25s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* small icon alignment */
+.ehdl-btn {
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+.ehdl-btn:hover {
+  background: rgba(0,0,0,0.12);
+}
+
+.ehdl-status::after {
+  margin-left: 4px;
+  font-size: 14px;
+}
+</style>
+</head>
+<body>
+<div class="panel" id="panel">
+  <h1>
+    <span id="title">EH Downloader</span>
+    <span>
+      <button id="langBtn">JP</button>
+      <button id="themeBtn">🌓</button>
+    </span>
+  </h1>
+
+  <div class="cols">
+    <div class="col">
+      <label>スリープ(ms)</label>
+      <input id="sleep" type="number" placeholder="800" />
+      <label>カスタムファイル名（チェックで適用）</label>
+      <div style="display:flex; gap:6px;">
+        <input id="customFileChk" type="checkbox" style="width:18px;" />
+        <input id="customFile" type="text" placeholder="{title}_{index}_{orig}" />
+      </div>
+    </div>
+
+    <div class="col">
+      <label>同時DL数</label>
+      <input id="concurrent" type="number" placeholder="1" />
+      <label>カスタムフォルダ名（チェックで適用）</label>
+      <div style="display:flex; gap:6px;">
+        <input id="customFolderChk" type="checkbox" style="width:18px;" />
+        <input id="customFolder" type="text" placeholder="{title}" />
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <label>範囲ダウンロード</label>
+    <div style="display:flex; gap:8px; margin-top:6px;">
+      <input id="rangeChk" type="checkbox" style="width:18px;" />
+      <input id="rangeStart" type="number" placeholder="0 からカウント（空欄は0）" />
+      <input id="rangeEnd" type="number" placeholder="空欄は無限" />
+    </div>
+  </div>
+
+  <div class="section">
+    <label>ダウンロードキュー</label>
+    <div id="queueBox" class="queue-box"></div>
+  </div>
+
+  <div class="section">
+    <label>ダウンロード履歴</label>
+    <div id="historyBox" class="queue-box"></div>
+    <div class="buttons">
+      <button id="clearHistoryBtn" class="btn-danger">履歴削除</button>
+      <button id="exportBtn" class="btn-secondary">バックアップ出力</button>
+    </div>
+  </div>
+</div>
+
+<!-- modal for 3-choice deletion -->
+<div id="modalBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <div><strong>履歴削除</strong></div>
+    <div class="muted">履歴をどの範囲で削除しますか？</div>
+    <div class="choices">
+      <button id="delAll">すべて削除</button>
+      <button id="delPopup">表示分のみ削除</button>
+      <button id="delCancel" class="btn-secondary">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="popup.js"></script>
+</body>
+</html>
